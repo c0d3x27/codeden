@@ -21,11 +21,9 @@ import { getNewSessionDraft, useNewSessionStore } from "@/stores/new-session";
 export function NewSessionPage({ projectId }: { projectId: string }) {
   const loaded = useSnapshot().data !== undefined;
   const project = useProject(projectId);
+  const runnerProviders = useSnapshotData((s) => s.runner.providers, []);
   // The project's own model lists, so its default and its config's models resolve (#643).
-  const { providers } = useProjectProviders(
-    projectId,
-    useSnapshotData((s) => s.runner.providers, []),
-  );
+  const { providers } = useProjectProviders(projectId, runnerProviders);
   const defaultAutonomy = useSnapshotData<AutonomyLevel>(
     (s) => s.settings.autonomy.default,
     "auto",
@@ -92,7 +90,8 @@ export function NewSessionPage({ projectId }: { projectId: string }) {
         placeholder="Describe the task — @ to mention files, / for commands and skills"
         options={
           <DraftOptions
-            providers={providers}
+            // The runner's lists: the picker swaps in the project's own itself.
+            providers={runnerProviders}
             choice={draft.choice}
             resolved={resolved}
             checks={checks}

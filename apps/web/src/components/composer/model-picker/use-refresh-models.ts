@@ -44,9 +44,10 @@ export function useRefreshModels() {
         const lists = await Promise.all(
           perProject.map((p) => client.projectModels(p.id, projectId, { refresh: true })),
         );
-        for (const list of lists) {
-          queryClient.setQueryData(projectModelsKey(projectId, list.providerId), list);
-        }
+        // Keyed by the refreshed global list, which the snapshot now holds.
+        perProject.forEach((provider, i) => {
+          queryClient.setQueryData(projectModelsKey(projectId, provider), lists[i]);
+        });
       }
     } catch (e) {
       toast.error("Couldn't refresh the models", { description: (e as Error).message });
