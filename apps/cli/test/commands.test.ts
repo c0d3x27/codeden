@@ -24,7 +24,9 @@ it.each(["SIGINT", "SIGTERM"] as const)("exits 1 when closing after %s fails", a
     void runCommand(args, parseCli(args));
     await expect.poll(() => on.mock.calls.some(([event]) => event === signal)).toBe(true);
     const handler = on.mock.calls.find(([event]) => event === signal)?.[1];
-    handler?.();
+    // A second signal while closing is ignored.
+    handler?.(signal);
+    handler?.(signal);
     expect(close).toHaveBeenCalledOnce();
     await expect.poll(() => exit.mock.calls.at(-1)?.[0]).toBe(1);
   } finally {

@@ -18,7 +18,7 @@ import { armQuitWatchdog, forceExit } from "./exit";
 import { registerBridge } from "./ipc";
 import { appMenuTemplate } from "./menu";
 import { loadAfterReady, waitForServer } from "./recovery";
-import { homeFiles, serverHealthy } from "./server-plan";
+import { homeFiles, mayReconnect, serverHealthy } from "./server-plan";
 import {
   applyLaunchAtLogin,
   fileLogger,
@@ -251,9 +251,9 @@ export class DesktopApp {
     if (this.quitting) return;
     const conn = this.conn;
     if (conn && !conn.server) {
-      const healthy = await serverHealthy(conn.url);
+      const reconnect = !(await serverHealthy(conn.url)) && (await mayReconnect(this.args.home));
       if (this.conn !== conn || this.quitting) return;
-      if (!healthy) {
+      if (reconnect) {
         this.conn = undefined;
         this.loaded = false;
         this.monitor?.stop();

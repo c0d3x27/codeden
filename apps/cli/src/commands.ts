@@ -74,11 +74,17 @@ export async function runCommand(args: string[], parsed: ParsedCli): Promise<num
     return 2;
   }
   let server: RunningServer;
-  const shutdown = () =>
+  let stopping = false;
+  const shutdown = (signal: NodeJS.Signals) => {
+    // A second Ctrl+C while closing changes nothing: the first close is still under way.
+    if (stopping) return;
+    stopping = true;
+    console.log(`Received ${signal}; stopping the server.`);
     void server.close().then(
       () => process.exit(0),
       () => process.exit(1),
     );
+  };
   try {
     server = await startServer({
       port,
