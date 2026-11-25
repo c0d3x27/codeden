@@ -237,14 +237,17 @@ const ENDS = String.raw`(?=$|[\\/"'\s;&|)])`;
 
 /**
  * Variables whose value the path rules know (`./paths`), or that name where the shell is or what
- * a pipe hands a block (`$_`): not a path built when the command runs.
+ * a pipe hands a block (`$_`): not a path built when the command runs. PowerShell's own values
+ * (`$_`, `$PSItem`, with properties, `$null`, `$true`, `$false`) only as a whole word
+ * (`Remove-Item $_`, `> $null`): `./paths` puts no folder in their place, and a POSIX shell (or
+ * PowerShell, for `$null`) expands them to nothing, so `"$null/home/me/x"` is `/home/me/x`.
  */
 const KNOWN = [
   /\$(?:HOME|\{HOME\})(?!\w)/gi,
   /\$(?:env:(?:USERPROFILE|TEMP|TMP|CODEDEN_HOME)|\{env:(?:USERPROFILE|TEMP|TMP|CODEDEN_HOME)\})(?!\w)/gi,
   /\$(?:TMPDIR|TEMP|TMP|CODEDEN_HOME|\{(?:TMPDIR|TEMP|TMP|CODEDEN_HOME)\})(?!\w)/g,
   new RegExp(String.raw`\$(?:PWD|\{PWD\})${ENDS}`, "gi"),
-  /\$(?:_|PSItem|null|true|false)(?!\w)/gi,
+  /(?<![^\s"'=(,;|{])\$(?:(?:_|PSItem)(?:\.\w+)*|null|true|false)(?=$|[\s"'),;|}])/gi,
   /%(?:USERPROFILE|TEMP|TMP|CODEDEN_HOME|CD)%/gi,
 ];
 /** A variable or a parameter: `$x`, `${x…}`, `$1`, `$@`, `$*`. */

@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { currentFolderLength } from "./current-folder";
+import { fromDevicePath } from "./device-paths";
 import type { ShellDialect } from "./shell-builder";
 
 export { isSecretPath } from "./secret-paths";
@@ -144,10 +145,11 @@ function fromGitBash(value: string, temp: string | undefined): string {
 /**
  * `target` with its quotes taken off and `~`, the home, temp and CodeDen home variables and where
  * the shell is (`$(pwd)`, `$PWD`, `(Get-Location)`, `hereLength`) at its start expanded; on
- * Windows, a Git Bash path (`/c/x`, `/tmp/x`) as a Windows path.
+ * Windows, a device path (`\\?\C:\x`) or a Git Bash path (`/c/x`, `/tmp/x`) as a Windows path.
  */
 function expand(target: string, ctx: PathContext): string {
   let value = target.trim().replace(/^["']|["']$/g, "");
+  if (isWin(ctx)) value = fromDevicePath(value);
   const here = hereLength(value, ctx);
   if (here > 0) value = (ctx.dir ?? ctx.cwd) + value.slice(here);
   const home = homeOf(ctx);
