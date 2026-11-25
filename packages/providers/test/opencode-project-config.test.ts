@@ -177,6 +177,9 @@ describe("reading a project's OpenCode config", () => {
             codeden: { type: "local", command: ["x"], enabled: false },
             docs: { type: "remote", url: "d" },
           },
+          // OpenCode's V1 form, which it still reads beside `servers`.
+          codeden: { enabled: false, headers: { Authorization: "x" } },
+          legacy: { type: "local", command: ["y"] },
         },
       },
     );
@@ -188,9 +191,10 @@ describe("reading a project's OpenCode config", () => {
         options: { baseURL: "http://127.0.0.1:9/v1", apiKey: "key-1" },
       },
     });
-    // CodeDen's own MCP server is its entry alone; the project's other servers stay.
+    // CodeDen's own MCP server is its entry alone, in either form; the project's others stay.
     expect(config.mcp).toEqual({
       servers: { codeden: { type: "remote", url: "u" }, docs: { type: "remote", url: "d" } },
+      legacy: { type: "local", command: ["y"] },
     });
     // CodeDen's internal variables never reach the config.
     expect(config.small_model).toBe("");

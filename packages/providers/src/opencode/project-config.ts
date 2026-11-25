@@ -147,18 +147,30 @@ export function layerConfig(
 ): Record<string, unknown> {
   const own = mcpServers(codeden);
   let base: Record<string, unknown> = withoutReserved(project ?? {});
-  const theirs = mcpServers(base);
-  if (theirs && own) {
-    const servers = { ...theirs };
-    for (const name of Object.keys(own)) delete servers[name];
-    base = { ...base, mcp: { ...(base.mcp as Record<string, unknown>), servers } };
-  }
+  if (own && isRecord(base.mcp))
+    base = { ...base, mcp: withoutServers(base.mcp, Object.keys(own)) };
   return mergeConfig(mergeConfig(base, user), codeden);
 }
 
 function mcpServers(config: Record<string, unknown>): Record<string, unknown> | undefined {
   const mcp = config.mcp;
   return isRecord(mcp) && isRecord(mcp.servers) ? mcp.servers : undefined;
+}
+
+/**
+ * A project's `mcp` without the servers named `names`, in both of OpenCode's forms: V2's
+ * `mcp.servers.<name>` and V1's `mcp.<name>`, which OpenCode still reads beside it (a V1
+ * `enabled: false` would otherwise reach CodeDen's own entry).
+ */
+function withoutServers(mcp: Record<string, unknown>, names: string[]): Record<string, unknown> {
+  const out = { ...mcp };
+  if (isRecord(out.servers)) {
+    const servers = { ...out.servers };
+    for (const name of names) delete servers[name];
+    out.servers = servers;
+  }
+  for (const name of names) if (name !== "servers") delete out[name];
+  return out;
 }
 
 /**
