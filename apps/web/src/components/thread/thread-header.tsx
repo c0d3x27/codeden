@@ -14,6 +14,7 @@ import {
   GitFork,
   MoreHorizontal,
   PanelRight,
+  RotateCcw,
   ScanSearch,
   Square,
   SquareTerminal,
@@ -23,6 +24,7 @@ import {
 import { toast } from "sonner";
 import { StatusDot } from "@/components/common/status-dot";
 import { ReadOnlyBadge, RoleBadge } from "@/components/orchestration/role-badge";
+import { useStartFresh } from "@/components/orchestration/start-fresh";
 import { MobileNavButton } from "@/components/shell/mobile-nav";
 import { Button } from "@/components/ui/button";
 import {
@@ -111,6 +113,8 @@ export function ThreadHeader({ session, running }: { session: Session; running: 
   });
   // Stop, archive and unarchive are shared with the sidebar's session row menu.
   const actions = useSessionActions(session);
+  // The orchestrator and the PMs start over instead of being archived (§8.1).
+  const fresh = useStartFresh(session, running);
 
   const title =
     session.role === "orchestrator"
@@ -318,6 +322,24 @@ export function ThreadHeader({ session, running }: { session: Session; running: 
                 <Workflow /> Make an automation…
               </DropdownMenuItem>
             )}
+            {fresh.available && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  disabled={fresh.blocked !== null}
+                  title={fresh.blocked ?? undefined}
+                  onSelect={fresh.open}
+                >
+                  <RotateCcw />
+                  <span className="flex min-w-0 flex-col">
+                    Start fresh…
+                    <span className="text-2xs text-muted-foreground">
+                      {fresh.blocked ?? "Archive this conversation and begin a new one"}
+                    </span>
+                  </span>
+                </DropdownMenuItem>
+              </>
+            )}
             {session.role === "agent" && (
               <>
                 <DropdownMenuSeparator />
@@ -341,6 +363,7 @@ export function ThreadHeader({ session, running }: { session: Session; running: 
             )}
           </DropdownMenuContent>
         </DropdownMenu>
+        {fresh.dialog}
       </div>
     </header>
   );

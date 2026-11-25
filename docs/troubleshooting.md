@@ -222,7 +222,7 @@ CodeDen uses an installed **Microsoft Edge** or **Google Chrome**. Install one, 
 
 ### A session keeps asking after I changed the project's permissions
 
-The project's **Permissions** (its Settings tab) and **Settings → Autonomy** are defaults for sessions you start afterwards. A session that exists keeps the level it was created with, also after you stop and resume it; a fork or a hand-off takes its source's. Open the session and change **Permissions** under its message box: it applies from the agent's next tool call (Codex: its next turn). The session's level is also shown in its **Details** panel, and the project's Settings tab lists the open sessions on another level than the project's default.
+The project's **Permissions** (its Settings tab) and **Settings → Autonomy** are defaults for sessions you start afterwards. A session that exists keeps the level it was created with, also after you stop and resume it; a fork or a hand-off takes its source's. Open the session and change **Permissions** under its message box, or use **Apply to open sessions** in the project's Settings tab, under **Permissions**, to move every open session listed there to the project's level (it asks first when that raises a session's level). Either applies from the agent's next tool call (Codex: its next turn). The session's level is also shown in its **Details** panel.
 
 Under **Supervised** every command asks, also ones that only read; that is what the level means. The project's autonomy mode (Manual, Assisted, the factory modes) doesn't change which commands ask. See [Security → Permissions](security.md#permissions).
 

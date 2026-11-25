@@ -37,6 +37,7 @@ import { automationRuns, checkpoints, items, sessions, turns } from "../../db/sc
 import { turnsOldestFirst } from "../../db/turn-order";
 import type { EventStore } from "../../events/store";
 import { notFound } from "../errors";
+import type { RoleFallback } from "../orchestration/role-fallback";
 import { ACTIVE_RUN_STATUSES, ACTIVE_SESSION_STATUSES } from "./conflicts";
 import type { ForkStart } from "./fork";
 import type { UnansweredStart } from "./unanswered-start";
@@ -75,6 +76,11 @@ export type StoredStartMeta = SessionStartMeta & {
    * next changes.
    */
   roleProvider?: string;
+  /**
+   * On an orchestrator or PM session that runs on a fallback provider because the role's own hit
+   * its usage limit (`RoleFallback`): where the role goes back to, and when.
+   */
+  fallback?: RoleFallback | null;
   /** A fork's workspace plan (§9): prepared before any start until the worktree exists. */
   forkStart?: ForkStart | null;
   /**

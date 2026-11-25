@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   type ConflictRecord,
   type InboxItem,
+  isActiveSession,
   messageFrom,
   type Notice,
   type Overview,
@@ -22,6 +23,7 @@ import type { TrustedAuthors } from "../github/review-trust";
 import type { InboxService } from "../inbox-service";
 import type { ProjectService } from "../projects/project-service";
 import type { RunnerPort } from "../runner-port";
+import { inArchivedProject } from "../sessions/archived-project";
 import { mayHaveStarted } from "../sessions/input-decorator";
 import type { SessionRepo } from "../sessions/repo";
 import type { SessionService } from "../sessions/session-service";
@@ -53,6 +55,7 @@ import {
   UnavailableGithubPort,
 } from "./ports";
 import { Reminders } from "./reminders";
+import { RoleLimitSwitch } from "./role-limit-switch";
 import { type OrchestrationRole, RoleSessions } from "./role-sessions";
 import { type WakeResult, WakeScheduler, type WakeSchedulerOptions } from "./wake-scheduler";
 
@@ -84,13 +87,13 @@ export interface OrchestrationDeps {
   automation?: AutomationPort;
   /** The user's IANA timezone (the usage settings', else the machine's). Default: the machine's. */
   timezone?: () => string;
+  /** Ids of the providers ready for new work (installed, signed in), for a role's fallback. */
+  readyProviders?: () => Promise<string[]>;
   /** The factory loop of a project, for the status digest (null outside the factory modes). */
   factoryLoop?: (projectId: string) => ProjectStatus["factory"];
   options?: OrchestrationOptions;
   log?: (message: string) => void;
 }
-
-const NOT_READY = new Set(["created", "queued", "starting", "running", "waiting"]);
 
 const WAKE_TEXT =
   "Automatic wake-up for the updates above. Act on anything that needs it; otherwise reply in one short line.";
@@ -113,13 +116,24 @@ export class OrchestrationService {
   readonly reminders: Reminders;
   private readonly cards: NoticeCards;
   private readonly delivery: NoticeDelivery;
+  /** Moves a role to another provider when its own hits its usage limit (§8.1). */
+  private readonly limits: RoleLimitSwitch;
   private unsubscribe: (() => void) | undefined;
 
   constructor(private readonly deps: OrchestrationDeps) {
     this.roles = new RoleSessions({
       ...deps,
       // An `ask_pm` whose question moved with the queue gets its answer from the new session.
-      onMoved: (from, to) => this.asks.retarget(from.id, to.id),
+      onMoved: (from, to, why) => {
+        this.asks.retarget(from.id, to.id);
+        this.limits.moved(from, to, why);
+      },
+    });
+    this.limits = new RoleLimitSwitch({
+      ...deps,
+      roles: this.roles,
+      ready: deps.readyProviders,
+      timezone: () => this.timezone(),
     });
     this.notices = new NoticeStore(deps.db, deps.store);
     this.cards = new NoticeCards(deps.store);
@@ -182,6 +196,7 @@ export class OrchestrationService {
     this.deps.sessions.setInputDecorator((session, input, from) => {
       // Who the turn is from counts once the runner takes it (the loop guard, #137).
       const turn = this.loops.beginTurn(session, from, input);
+      this.limits.sending(session, input, from);
       try {
         // The status digest and undelivered notices, fresh at send time (§8.4, `NoticeDelivery`).
         const decorated = this.delivery.decorate(session, input);
@@ -431,6 +446,7 @@ export class OrchestrationService {
       try {
         this.cards.attach(events);
         this.delivery.onEvents(events);
+        this.limits.onEvents(events);
         const session = (id: string) => this.deps.repo.find(id)?.session;
         const derived = [
           ...deriveNotices(events, {
@@ -454,8 +470,10 @@ export class OrchestrationService {
     const role: OrchestrationRole = key === "orchestrator" ? "orchestrator" : "pm";
     const projectId = role === "pm" ? key.slice(3) : null;
     if (this.notices.undelivered(role, projectId).length === 0) return "empty";
+    // An archived project's sessions take no input (§13): its PM isn't woken, or started.
+    if (inArchivedProject(this.deps.projects, { projectId })) return "empty";
     const session = await this.roles.ensure(role, projectId);
-    if (NOT_READY.has(session.status)) return "busy";
+    if (isActiveSession(session)) return "busy";
     await this.deps.sessions.send(
       session.id,
       { input: { text: WAKE_TEXT, attachments: [] }, whenBusy: "reject" },

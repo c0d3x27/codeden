@@ -224,6 +224,15 @@ export function ProviderSettings() {
             </SettingRow>
           );
         })}
+        <SettingRow
+          label="Switch provider automatically when a limit is hit"
+          help="When the orchestrator's or a project manager's provider reaches its usage limit, CodeDen moves them to another ready provider, sends your message again and says so in their chat and the inbox. They move back once the limit has reset. Off: the turn fails and waits for you."
+        >
+          <Switch
+            checked={settings.providers.autoSwitchOnLimit}
+            onCheckedChange={(v) => update({ providers: { autoSwitchOnLimit: v } })}
+          />
+        </SettingRow>
       </SettingsSection>
       <ModelVisibilitySettings />
       <CustomModelSettings />

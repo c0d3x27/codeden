@@ -55,6 +55,7 @@ import type {
   SkillSwitchDiff,
   SkillSwitchRequest,
   SkillSwitchResponse,
+  StartFreshRoleResponse,
   SttQuery,
   SttResponse,
   TriageIssueRequest,
@@ -209,6 +210,15 @@ export interface OrchestrationApi {
     input: UserInputInit,
     whenBusy?: "queue" | "steer" | "reject",
   ): Promise<RoleMessageResponse>;
+  /**
+   * "Start fresh": archive the role session `sessionId` (read-only, kept) and start a new one on
+   * the provider and model the settings name. 409 while a turn runs or a question is open.
+   */
+  startFresh(
+    role: OrchestrationRole,
+    projectId: string | null,
+    sessionId: string,
+  ): Promise<StartFreshRoleResponse>;
   projectStatus(projectId: string): Promise<ProjectStatus>;
   overview(): Promise<Overview>;
   notices(query?: {

@@ -113,6 +113,13 @@ export const Settings = z.object({
       orchestrator: RoleDefaults.prefault({}),
       pm: RoleDefaults.prefault({}),
       agent: RoleDefaults.prefault({}),
+      /**
+       * "Switch provider automatically when a limit is hit" (§8.1): when the orchestrator's or a
+       * PM's turn fails because its provider reached its usage limit, the role moves to another
+       * ready provider by itself, and back once the limit has reset. Off: the turn fails as any
+       * other. Agent sessions aren't moved; they wait for the reset (`sessions.autoRetry`).
+       */
+      autoSwitchOnLimit: z.boolean().default(true),
     })
     .prefault({}),
   /** Small, cheap model for side jobs (§7.4). */

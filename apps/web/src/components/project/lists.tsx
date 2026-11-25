@@ -31,8 +31,8 @@ const emptyBox =
   "rounded-xl border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground";
 
 /**
- * A project's archived agent sessions, most recently archived first, paged from the server
- * (the snapshot carries only the recent ones).
+ * A project's archived sessions (its agents and its PM's earlier conversations), most recently
+ * archived first, paged from the server (the snapshot carries only the recent ones).
  */
 export function ArchivedSessionsList({ projectId }: { projectId: string }) {
   const { data, error, isPending, hasNextPage, isFetchingNextPage, fetchNextPage } =
@@ -94,14 +94,18 @@ export function SessionsList({ sessions }: { sessions: Session[] }) {
               {s.pr && <PrBadge pr={s.pr} />}
             </span>
             <span className="block truncate font-mono text-3xs text-muted-foreground">
-              {s.workKey} · {s.branch}
+              {s.workKey}
+              {s.branch && ` · ${s.branch}`}
             </span>
           </span>
           <span className="text-2xs text-muted-foreground">{statusLabel[s.status]}</span>
           <span className="flex items-center gap-1.5 text-2xs text-muted-foreground">
             <ProviderMark provider={s.provider} /> {startedBy[s.startedBy.kind]}
           </span>
-          {s.archivedAt ? (
+          {s.archivedAt && s.role !== "agent" ? (
+            // An earlier PM conversation stays archived: a newer one holds the role (§8.1).
+            <span className="text-right text-2xs text-muted-foreground">Read-only</span>
+          ) : s.archivedAt ? (
             <UnarchiveButton session={s} />
           ) : (
             <span className="w-11 text-right text-2xs text-muted-foreground tabular-nums">

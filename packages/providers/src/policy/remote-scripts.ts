@@ -85,6 +85,11 @@ const RUBY: Interpreter = {
   valued: (f) => ["-I", "-r", "-C", "-E"].includes(f),
 };
 
+const PHP: Interpreter = {
+  program: (f) => /^-[rfBRFE]$/.test(f),
+  valued: (f) => ["-c", "-d", "-z"].includes(f),
+};
+
 const PWSH_SWITCHES = new Set([
   "-noprofile",
   "-nop",
@@ -119,6 +124,7 @@ const INTERPRETERS = new Map<string, Interpreter>([
   ["nodejs", NODE],
   ["perl", PERL],
   ["ruby", RUBY],
+  ["php", PHP],
   ["pwsh", POWERSHELL],
   ["powershell", POWERSHELL],
   ["source", SOURCE],
@@ -136,13 +142,18 @@ const isStdin = (arg: string | undefined): boolean =>
  * True when the command runs what it reads on stdin as code: an interpreter given no program
  * (no `-c`/`-e` code, module or script file), or told to read it from stdin (`-`, `sh -s`).
  */
-function runsStdin(cmd: SimpleCommand): boolean {
+export function runsStdin(cmd: SimpleCommand): boolean {
   const { tokens } = unwrap(cmd.words);
   const bin = binName(tokens[0]);
   if (bin === "iex" || bin === "invoke-expression") return true;
   // cmd runs the lines it reads unless `/c` gives it a command (#550). `/k` runs its command,
   // if any, and then goes on reading.
   if (bin === "cmd") return !tokens.slice(1).some((a) => /^\/\/?c$/i.test(a));
+  // `at now` and `batch` read the commands they schedule on stdin, unless `-f` names a file or
+  // they only list, show or remove jobs (`-l`, `-c`, `-r`, `-d`).
+  if (bin === "at" || bin === "batch") {
+    return !tokens.slice(1).some((a) => /^-[a-zA-Z]*[fclrd]/.test(a));
+  }
   const spec = interpreter(bin);
   if (!spec) return false;
   const args = tokens.slice(1);

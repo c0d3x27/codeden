@@ -1,5 +1,15 @@
+import { gitTopLevel } from "../util/git-head";
 import { binName, CD, namedArg, unwrap } from "./command-words";
-import { type PathContext, providerPath, resolveAgainst, type SavedLocation } from "./paths";
+import {
+  isKnownFolder,
+  isUnknownDir,
+  isWin,
+  type PathContext,
+  providerPath,
+  resolveAgainst,
+  type SavedLocation,
+  UNKNOWN_DIR,
+} from "./paths";
 import type { SimpleCommand } from "./shell";
 
 /**
@@ -49,10 +59,12 @@ function afterCd<T extends PathContext>(cmd: SimpleCommand, ctx: T): T[] {
       : [ctx];
   }
   if (POP.has(bin)) return afterPop(bin, tokens.slice(1), ctx);
+  if (tokens.length === 1 && isWin(ctx) && /^[a-z]:$/i.test(tokens[0] as string)) {
+    return [toDrive(tokens[0] as string, ctx)];
+  }
   if (!CD.has(bin)) return [ctx];
   const { stack, args } = withoutStackName(tokens.slice(1));
-  if (args.includes("-")) return [ctx];
-  const target = namedArg(args, ["-path", "-literalpath"]) ?? args.find((a) => !a.startsWith("-"));
+  const target = cdTarget(args);
   if (PUSH.has(bin)) {
     const saved: SavedLocation = { dir: ctx.dir, psDrive: ctx.psDrive, stack };
     // With no location, `Push-Location` saves the current one and stays.
@@ -85,12 +97,47 @@ function afterPop<T extends PathContext>(bin: string, words: string[], ctx: T): 
   return out;
 }
 
-/** The context with its location moved to `target`: a folder, or an item on a PowerShell drive. */
-export function moveTo<T extends PathContext>(target: string, ctx: T): T {
+/**
+ * The context with its location moved to `target`: a folder, an item on a PowerShell drive, or a
+ * folder only known when the command runs (`cd $X`, `cd -`: `UNKNOWN_DIR`, #614).
+ */
+export function moveTo<T extends PathContext>(given: string, ctx: T): T {
+  const target = withTopLevel(given, ctx);
   const provider = providerPath(target, ctx);
   if (provider && provider.path === undefined) return { ...ctx, psDrive: provider.drive };
   const onDisk = { ...ctx, psDrive: undefined };
-  return { ...onDisk, dir: resolveAgainst(provider?.path ?? target, onDisk) };
+  const folder = provider?.path ?? target;
+  if (!isKnownFolder(folder, onDisk)) return { ...onDisk, dir: UNKNOWN_DIR };
+  return { ...onDisk, dir: resolveAgainst(folder, onDisk) };
+}
+
+/** `$(git rev-parse --show-toplevel)` (or in backticks) at the start of a word. */
+const TOP_LEVEL =
+  /^(["']?)(?:\$\(\s*git\s+rev-parse\s+--show-toplevel\s*\)|`\s*git\s+rev-parse\s+--show-toplevel\s*`)/;
+
+/**
+ * `target` with the repository's top folder in place of a `git rev-parse --show-toplevel` it
+ * starts with (`cd "$(git rev-parse --show-toplevel)/apps/web"`), found on disk from where the
+ * shell is (`gitTopLevel`). Left as it is (a folder only known when it runs) when the shell is
+ * somewhere unknown, the command sets `GIT_DIR` or `GIT_WORK_TREE` (`gitEnv`), the paths are
+ * another platform's, or no repository holds the folder.
+ */
+function withTopLevel(target: string, ctx: PathContext): string {
+  const match = TOP_LEVEL.exec(target.trim());
+  if (!match || ctx.gitEnv || isUnknownDir(ctx.dir) || ctx.psDrive) return target;
+  if ((ctx.platform ?? process.platform) !== process.platform) return target;
+  const top = gitTopLevel(resolveAgainst(".", ctx));
+  return top === undefined ? target : `${match[1]}${top}${target.trim().slice(match[0].length)}`;
+}
+
+/**
+ * PowerShell's `D:` (a function running `Set-Location D:`) and cmd's `D:`: to the folder the shell
+ * last stood in on that drive, which may be any. The same drive changes nothing.
+ */
+function toDrive<T extends PathContext>(drive: string, ctx: T): T {
+  const here = isUnknownDir(ctx.dir) ? undefined : resolveAgainst(".", ctx);
+  const same = here?.toLowerCase().startsWith(drive.toLowerCase()) === true;
+  return same && !ctx.psDrive ? ctx : { ...ctx, psDrive: undefined, dir: UNKNOWN_DIR };
 }
 
 /** Back to the latest location saved on `stack` (the default stack when undefined). */
@@ -133,4 +180,38 @@ function withoutStackName(args: string[]): { stack?: string; args: string[] } {
     } else rest.push(arg);
   }
   return { stack, args: rest };
+}
+
+/** Bash's `cd` options (`-L`, `-P`, `-e`, `-@`), and the switches of `Set-Location` and its kin. */
+const CD_FLAGS = /^-[LPe@]+$/;
+const CD_SWITCHES = ["passthru", "verbose", "debug", "whatif", "confirm"];
+
+/**
+ * Where `cd`, `Set-Location` and their kin go, given their words without `-StackName`: `-Path x`,
+ * or their one operand (cmd's `cd /d C:\dir` too, which also changes the drive; `/d` alone is Git
+ * Bash's `D:\`). `-` (`./paths`' `isKnownFolder`) for a folder only known when it runs: `cd -`,
+ * `pushd +1`, and two operands, as zsh's `cd old new` puts `new` for `old` in the current folder
+ * (#614). A word after a parameter that isn't a switch (`-ErrorAction Stop`) is its value. None
+ * for no folder.
+ */
+function cdTarget(args: string[]): string | undefined {
+  // `pushd +1` and `pushd -1` rotate the stack, which may hold folders from earlier commands.
+  if (args.some((a) => /^[+-]\d*$/.test(a))) return "-";
+  const named = namedArg(args, ["-path", "-literalpath"]);
+  if (named !== undefined) return named;
+  const operands: string[] = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i] as string;
+    if (arg === "--") {
+      operands.push(...args.slice(i + 1));
+      break;
+    }
+    if (i === 0 && args.length > 1 && /^\/d$/i.test(arg)) continue;
+    if (!arg.startsWith("-")) operands.push(arg);
+    else if (!CD_FLAGS.test(arg) && !arg.includes(":")) {
+      const name = arg.slice(1).toLowerCase();
+      if (!CD_SWITCHES.some((s) => s.startsWith(name))) i += 1;
+    }
+  }
+  return operands.length > 1 ? "-" : operands[0];
 }

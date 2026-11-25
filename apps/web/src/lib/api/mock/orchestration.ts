@@ -18,6 +18,8 @@ import type { MockWorld } from "./world";
 const delay = <T>(value: T, ms = 120): Promise<T> =>
   new Promise((resolve) => setTimeout(() => resolve(structuredClone(value)), ms));
 
+const now = () => new Date().toISOString();
+
 const connection: GithubConnection = {
   connected: true,
   source: "gh",
@@ -56,7 +58,8 @@ function summary(s: Session): WorkSummary {
 export function mockOrchestration(world: MockWorld, deps: Deps): OrchestrationParts {
   const roleSession = (role: "orchestrator" | "pm", projectId: string | null) =>
     world.snapshot.sessions.find(
-      (s) => s.role === role && (role === "orchestrator" || s.projectId === projectId),
+      (s) =>
+        s.role === role && !s.archivedAt && (role === "orchestrator" || s.projectId === projectId),
     );
   const ensure = (role: "orchestrator" | "pm", projectId: string | null): Session => {
     const found = roleSession(role, projectId);
@@ -169,6 +172,22 @@ export function mockOrchestration(world: MockWorld, deps: Deps): OrchestrationPa
         // Like the server: a message to a busy role session waits in its queue.
         await deps.sendMessage(session.id, input, whenBusy === "steer" ? "steer" : "queue");
         return { sessionId: session.id, status: "sent" };
+      },
+      // Like the server: archive the current role session and start an empty one.
+      async startFresh(role, projectId, sessionId) {
+        const current = roleSession(role, projectId);
+        if (current?.id !== sessionId)
+          throw new Error("This is no longer the current conversation");
+        if (current.status === "running" || current.status === "waiting") {
+          throw new Error("A turn is running. Wait for it to finish, then start fresh.");
+        }
+        const archived = { ...current, status: "stopped" as const, archivedAt: now() };
+        world.emitDomain({
+          type: "session.updated",
+          sessionId: current.id,
+          payload: { session: archived },
+        });
+        return delay({ session: ensure(role, projectId), archivedSessionId: current.id });
       },
       projectStatus: (id) => delay(projectStatus(id)),
       overview: () =>
